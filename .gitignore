@@ -1,0 +1,25 @@
+# Gradle and Android build output
+.gradle/
+**/build/
+.kotlin/
+local.properties
+
+# Android Studio and IntelliJ IDEA
+*.iml
+.idea/
+
+# Native builds
+.externalNativeBuild/
+.cxx/
+
+# Test and profiling output
+/captures/
+*.log
+
+# Signing materials
+*.jks
+*.keystore
+keystore.properties
+
+# macOS
+.DS_Store
