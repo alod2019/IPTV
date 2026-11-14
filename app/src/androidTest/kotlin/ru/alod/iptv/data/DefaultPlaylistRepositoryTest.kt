@@ -94,7 +94,7 @@ class DefaultPlaylistRepositoryTest {
       epgLoader = ru.alod.iptv.data.epg.EpgLoader(OkHttpClient(), ru.alod.iptv.data.epg.XmlTvParser()),
     )
 
-    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), useEpg = true)
+    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), confirmEpg = { true })
     val channel = epgRepository.observeChannels(result.playlistId).first().single()
 
     assertEquals("Morning", channel.currentProgram?.title)
@@ -125,7 +125,7 @@ class DefaultPlaylistRepositoryTest {
       epgLoader = ru.alod.iptv.data.epg.EpgLoader(OkHttpClient(), ru.alod.iptv.data.epg.XmlTvParser()),
     )
 
-    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), useEpg = true)
+    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), confirmEpg = { true })
     val channel = epgRepository.observeChannels(result.playlistId).first().single()
     val selectedPrograms = database.playlistDao().currentAndNextPrograms(result.playlistId, 120_000L)
 
@@ -146,11 +146,24 @@ class DefaultPlaylistRepositoryTest {
       epgLoader = ru.alod.iptv.data.epg.EpgLoader(OkHttpClient(), ru.alod.iptv.data.epg.XmlTvParser()),
     )
 
-    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), useEpg = false)
+    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), confirmEpg = { false })
 
     assertEquals(1, server.requestCount)
     assertTrue(!epgRepository.observePlaylists().first().single().epgEnabled)
     assertEquals(null, epgRepository.observeChannels(result.playlistId).first().single().currentProgram)
+  }
+
+  @Test
+  fun playlistWithoutEpg_doesNotRequestConfirmation() = runBlocking {
+    server.enqueue(MockResponse().setBody(playlist("News")))
+    var confirmationRequested = false
+
+    repository.importUrl("Test", server.url("/list.m3u").toString()) {
+      confirmationRequested = true
+      true
+    }
+
+    assertTrue(!confirmationRequested)
   }
 
   private fun playlist(vararg names: String): String = buildString {

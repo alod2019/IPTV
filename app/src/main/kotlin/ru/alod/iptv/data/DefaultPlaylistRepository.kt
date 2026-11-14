@@ -53,15 +53,23 @@ class DefaultPlaylistRepository(
     }
   }
 
-  override suspend fun importUrl(name: String, url: String, useEpg: Boolean): ImportResult {
+  override suspend fun importUrl(
+    name: String,
+    url: String,
+    confirmEpg: suspend () -> Boolean,
+  ): ImportResult {
     val parsed = parser.parse(StringReader(sourceLoader.loadUrl(url)))
-    val epg = loadEpg(url, parsed.epgUrl, useEpg)
+    val epg = loadEpg(url, parsed.epgUrl, parsed.epgUrl != null && confirmEpg())
     return createPlaylist(name, PlaylistSource.URL, url.trim(), parsed, epg)
   }
 
-  override suspend fun importFile(name: String, uri: String, useEpg: Boolean): ImportResult {
+  override suspend fun importFile(
+    name: String,
+    uri: String,
+    confirmEpg: suspend () -> Boolean,
+  ): ImportResult {
     val parsed = parser.parse(StringReader(sourceLoader.loadFile(uri)))
-    val epg = loadEpg(uri, parsed.epgUrl, useEpg)
+    val epg = loadEpg(uri, parsed.epgUrl, parsed.epgUrl != null && confirmEpg())
     return createPlaylist(name, PlaylistSource.FILE, uri, parsed, epg)
   }
 

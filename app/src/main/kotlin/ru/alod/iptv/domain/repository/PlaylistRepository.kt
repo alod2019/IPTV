@@ -10,9 +10,17 @@ interface PlaylistRepository {
 
   fun observeChannels(playlistId: Long): Flow<List<Channel>>
 
-  suspend fun importUrl(name: String, url: String, useEpg: Boolean = true): ImportResult
+  suspend fun importUrl(
+    name: String,
+    url: String,
+    confirmEpg: suspend () -> Boolean = { true },
+  ): ImportResult
 
-  suspend fun importFile(name: String, uri: String, useEpg: Boolean = true): ImportResult
+  suspend fun importFile(
+    name: String,
+    uri: String,
+    confirmEpg: suspend () -> Boolean = { true },
+  ): ImportResult
 
   suspend fun refresh(playlistId: Long): ImportResult
 

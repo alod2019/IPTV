@@ -2,7 +2,7 @@
 
 ## Project overview
 
-IPTV is a single-module Android application for playing user-provided M3U/M3U8 playlists. Users can import playlists from HTTP(S) URLs or local files, browse channel groups, search, mark favorites, refresh sources, and watch HLS, DASH, and progressive HTTP(S) streams. Playlists, channels, favorites, the last selected channel, and optional XMLTV programs persist across launches. During import, users choose whether to use or ignore the EPG URL declared by the playlist; enabled guides display current and next programs.
+IPTV is a single-module Android application for playing user-provided M3U/M3U8 playlists. Users can import playlists from HTTP(S) URLs or local files, browse channel groups, search, mark favorites, refresh sources, and watch HLS, DASH, and progressive HTTP(S) streams. Playlists, channels, favorites, the last selected channel, and optional XMLTV programs persist across launches. When saving a playlist, users confirm EPG usage in a dialog shown only if the parsed playlist declares an EPG URL; enabled guides display current and next programs.
 
 The application ID and Kotlin root package are `ru.alod.iptv`. `MainActivity` is the launcher activity. Navigation contains `Main` and `Player(channelId)` destinations. Playback is foreground-only; Android TV, Picture-in-Picture, background playback, DRM, Ace Stream, UDP multicast, scheduled background EPG updates, and provider-specific APIs are not implemented.
 
@@ -32,8 +32,8 @@ Production code is under `app/src/main/kotlin/ru/alod/iptv/`:
 - `data/epg/` downloads XMLTV/XMLTV.gz with size limits and parses programs using SAX with external entities disabled.
 - `data/source/` loads URL/file sources with limits and typed errors. `PlaylistDecoder` supports UTF-8/BOM and Windows-1251 fallback. Maximum playlist size is 10 MiB.
 - `data/local/` contains Room entities, DAO, and database. Only the current schema (version 1, including EPG settings and `programs`) is exported to `app/schemas/`. No migrations or destructive fallback are configured for the first publication.
-- `data/DefaultPlaylistRepository.kt` imports and transactionally refreshes playlists. Failed refreshes retain cached channels; favorites and last channel are restored by stable keys. EPG failures do not cancel channel import or delete cached programs. Programs map to channels by `tvg-id`; SQL selects only the current and next program for each channel, and these values refresh every minute without loading the full guide.
-- `ui/main/` contains the playlist/channel screen and its ViewModel. The UI supports multiple saved playlists, groups, search, favorites, import with an EPG opt-in checkbox, refresh, deletion, and current/next program labels.
+- `data/DefaultPlaylistRepository.kt` imports and transactionally refreshes playlists. Initial imports request EPG confirmation only when the parsed source declares EPG, without loading the playlist twice. Failed refreshes retain cached channels; favorites and last channel are restored by stable keys. EPG failures do not cancel channel import or delete cached programs. Programs map to channels by `tvg-id`; SQL selects only the current and next program for each channel, and these values refresh every minute without loading the full guide.
+- `ui/main/` contains the playlist/channel screen and its ViewModel. The UI supports multiple saved playlists, groups, search, favorites, import with an EPG confirmation dialog when EPG is present, refresh, deletion, and current/next program labels.
 - `ui/player/` owns ExoPlayer lifecycle and playback UI. The ViewModel retains the player across configuration changes, pauses on stop, and releases it when cleared.
 - `Navigation.kt` registers both routes; `NavigationKeys.kt` defines their serializable keys.
 - `ui/theme/` contains the Material 3 theme. Dynamic color remains available but disabled by default.
@@ -50,7 +50,7 @@ Run from the repository root with Java 17 and Android SDK API 37. `local.propert
 ./gradlew :app:assembleRelease
 ```
 
-Debug APK output: `app/build/outputs/apk/debug/app-debug.apk`. Devices must run API 24 or newer. Release shrinking is disabled and no project-specific signing or publishing setup exists. `app/proguard-rules.pro` is referenced but is not required by the current non-minified release configuration.
+Debug APK output: `app/build/outputs/apk/debug/app-debug.apk`. Devices must run API 24 or newer. Release shrinking is disabled, and release builds use the standard Android debug signing config. No publishing setup exists. `app/proguard-rules.pro` is referenced but is not required by the current non-minified release configuration.
 
 ## Development conventions
 
@@ -82,13 +82,13 @@ Local JVM tests cover M3U/EPG metadata parsing, XMLTV dates and gzip loading, ch
 - `usesCleartextTraffic="true"` is intentional because many user-provided IPTV sources still use HTTP. HTTPS is preferred. No application credentials are collected.
 - Playlist, stream, and enabled EPG URLs, including possible provider tokens, are stored locally in Room to support refresh and playback. `allowBackup` remains enabled.
 - Only user-provided playlists are supported; no channel list is bundled.
-- Release obfuscation and release signing are not configured.
+- Release obfuscation is not configured. Release APKs are signed with the standard debug key and are not suitable for production distribution.
 
 ## Verification status and limitations
 
-- `./gradlew :app:testDebugUnitTest` passes: 18 tests.
-- `./gradlew :app:connectedDebugAndroidTest` passes on `Pixel_10_Pro` emulator: 9 tests, including real local HLS playback, EPG import/ignore behavior, and limited current/next SQL selection at a program-start boundary.
+- `./gradlew :app:testDebugUnitTest` passes: 20 tests, including conditional EPG confirmation state.
+- `./gradlew :app:connectedDebugAndroidTest` passes on `Pixel_10_Pro` emulator: 12 tests, including real local HLS playback, EPG confirmation choices, limited current/next SQL selection at a program-start boundary, confirmation suppression when EPG is absent, and opening a different channel after returning from the player.
 - `./gradlew :app:lintDebug`, `assembleDebug`, and `assembleRelease` pass.
 - Manual emulator verification covered URL import, Storage Access Framework file import, search, favorites, process-restart persistence, actual video rendering, landscape configuration change, and background/resume. Additional EPG verification used local M3U and XMLTV.gz files: enabled import displayed current/next programs, while ignored import made no EPG request.
-- Release output is `app/build/outputs/apk/release/app-release-unsigned.apk`; debug output is `app/build/outputs/apk/debug/app-debug.apk`.
+- Release output is `app/build/outputs/apk/release/app-release.apk`; debug output is `app/build/outputs/apk/debug/app-debug.apk`.
 - The compile SDK 37 compatibility warning from AGP 9.0.1 remains non-fatal. Dependency-update warnings reported by lint were left unchanged to avoid unrelated upgrades.

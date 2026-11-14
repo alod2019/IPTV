@@ -2,6 +2,7 @@ package ru.alod.iptv.ui.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,7 @@ class MainScreenViewModel(
   val uiState: StateFlow<MainScreenUiState> = _uiState
   private var playlistsJob: Job? = null
   private var channelsJob: Job? = null
+  private var epgConfirmation: CompletableDeferred<Boolean>? = null
 
   init {
     observePlaylists()
@@ -48,12 +50,26 @@ class MainScreenViewModel(
     _uiState.value = content().let { it.copy(favoritesOnly = !it.favoritesOnly) }
   }
 
-  fun importUrl(name: String, url: String, useEpg: Boolean) = runImport {
-    repository.importUrl(name, url, useEpg)
+  fun importUrl(name: String, url: String) = runImport {
+    repository.importUrl(name, url, ::confirmEpg)
   }
 
-  fun importFile(name: String, uri: String, useEpg: Boolean) = runImport {
-    repository.importFile(name, uri, useEpg)
+  fun importFile(name: String, uri: String) = runImport {
+    repository.importFile(name, uri, ::confirmEpg)
+  }
+
+  fun resolveEpgConfirmation(useEpg: Boolean) {
+    val confirmation = epgConfirmation ?: return
+    epgConfirmation = null
+    _uiState.value = content().copy(isEpgConfirmationVisible = false)
+    confirmation.complete(useEpg)
+  }
+
+  private suspend fun confirmEpg(): Boolean {
+    val confirmation = CompletableDeferred<Boolean>()
+    epgConfirmation = confirmation
+    _uiState.value = content().copy(isEpgConfirmationVisible = true)
+    return confirmation.await()
   }
 
   fun refresh() {
@@ -165,6 +181,7 @@ sealed interface MainScreenUiState {
     val operationError: ImportError? = null,
     val skippedChannels: Int? = null,
     val epgError: Boolean = false,
+    val isEpgConfirmationVisible: Boolean = false,
     internal val channelsJobNeeded: Boolean = true,
   ) : MainScreenUiState {
     val selectedPlaylist: Playlist? get() = playlists.firstOrNull { it.id == selectedPlaylistId }

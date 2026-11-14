@@ -69,12 +69,40 @@ class MainScreenViewModelTest {
     val repository = FakePlaylistRepository()
     val viewModel = MainScreenViewModel(repository)
 
-    viewModel.importUrl("Test", "https://example.com/list.m3u", useEpg = true)
+    viewModel.importUrl("Test", "https://example.com/list.m3u")
 
     val state = content(viewModel)
     assertEquals(1L, state.selectedPlaylistId)
     assertEquals(2, state.skippedChannels)
     assertFalse(state.isRefreshing)
+  }
+
+  @Test
+  fun importWithoutEpg_doesNotShowConfirmation() = runTest {
+    val repository = FakePlaylistRepository()
+    val viewModel = MainScreenViewModel(repository)
+
+    viewModel.importUrl("Test", "https://example.com/list.m3u")
+
+    assertFalse(content(viewModel).isEpgConfirmationVisible)
+    assertEquals(0, repository.epgConfirmationRequests)
+  }
+
+  @Test
+  fun importWithEpg_waitsForConfirmation() = runTest {
+    val repository = FakePlaylistRepository().apply { epgAvailable = true }
+    val viewModel = MainScreenViewModel(repository)
+
+    viewModel.importUrl("Test", "https://example.com/list.m3u")
+
+    assertTrue(content(viewModel).isEpgConfirmationVisible)
+    assertFalse(repository.importCompleted)
+
+    viewModel.resolveEpgConfirmation(true)
+
+    assertFalse(content(viewModel).isEpgConfirmationVisible)
+    assertTrue(repository.importCompleted)
+    assertEquals(true, repository.confirmedEpg)
   }
 
   @Test
@@ -119,14 +147,26 @@ private class FakePlaylistRepository(
   )
   var importError: Throwable? = null
   var deletedPlaylistId: Long? = null
+  var epgAvailable: Boolean = false
+  var epgConfirmationRequests: Int = 0
+  var confirmedEpg: Boolean? = null
+  var importCompleted: Boolean = false
 
   override fun observePlaylists(): Flow<List<Playlist>> = observablePlaylists
 
   override fun observeChannels(playlistId: Long): Flow<List<Channel>> = channelsFlow
 
-  override suspend fun importUrl(name: String, url: String, useEpg: Boolean): ImportResult = importResult()
+  override suspend fun importUrl(
+    name: String,
+    url: String,
+    confirmEpg: suspend () -> Boolean,
+  ): ImportResult = importResult(confirmEpg)
 
-  override suspend fun importFile(name: String, uri: String, useEpg: Boolean): ImportResult = importResult()
+  override suspend fun importFile(
+    name: String,
+    uri: String,
+    confirmEpg: suspend () -> Boolean,
+  ): ImportResult = importResult(confirmEpg)
 
   override suspend fun refresh(playlistId: Long): ImportResult = importResult()
 
@@ -145,8 +185,13 @@ private class FakePlaylistRepository(
 
   override suspend fun getChannel(channelId: Long): Channel? = channelsFlow.value.firstOrNull { it.id == channelId }
 
-  private fun importResult(): ImportResult {
+  private suspend fun importResult(confirmEpg: suspend () -> Boolean = { true }): ImportResult {
     importError?.let { throw it }
+    if (epgAvailable) {
+      epgConfirmationRequests++
+      confirmedEpg = confirmEpg()
+    }
+    importCompleted = true
     return ImportResult(1, 2, 2)
   }
 }

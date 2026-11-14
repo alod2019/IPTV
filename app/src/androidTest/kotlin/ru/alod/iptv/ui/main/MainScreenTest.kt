@@ -48,22 +48,38 @@ class MainScreenTest {
   }
 
   @Test
-  fun urlDialog_passesEnteredDataAndEpgChoice() {
-    var imported: Triple<String, String, Boolean>? = null
+  fun urlDialog_passesEnteredDataWithoutEpgCheckbox() {
+    var imported: Pair<String, String>? = null
     composeTestRule.setContent {
       TestMainScreen(
         state = MainScreenUiState.Content(),
-        onImportUrl = { name, url, useEpg -> imported = Triple(name, url, useEpg) },
+        onImportUrl = { name, url -> imported = name to url },
       )
     }
     composeTestRule.onNodeWithText("Добавить плейлист").performClick()
     composeTestRule.onNodeWithText("Название плейлиста").performTextInput("Test")
     composeTestRule.onNodeWithText("URL M3U/M3U8-плейлиста").performTextInput("https://example.com/list.m3u")
-    composeTestRule.onNodeWithText("Использовать EPG из плейлиста").performClick()
 
+    composeTestRule.onNodeWithText("Использовать EPG").assertDoesNotExist()
     composeTestRule.onNodeWithText("Добавить URL").performClick()
 
-    assertEquals(Triple("Test", "https://example.com/list.m3u", false), imported)
+    assertEquals("Test" to "https://example.com/list.m3u", imported)
+  }
+
+  @Test
+  fun epgConfirmation_allowsImportWithoutEpg() {
+    var useEpg: Boolean? = null
+    composeTestRule.setContent {
+      TestMainScreen(
+        state = MainScreenUiState.Content(isEpgConfirmationVisible = true),
+        onEpgConfirmation = { useEpg = it },
+      )
+    }
+
+    composeTestRule.onNodeWithText("В плейлисте найдена EPG").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Без EPG").performClick()
+
+    assertEquals(false, useEpg)
   }
 }
 
@@ -82,7 +98,8 @@ private fun TestMainScreen(
     ),
   ),
   onChannelClick: (Channel) -> Unit = {},
-  onImportUrl: (String, String, Boolean) -> Unit = { _, _, _ -> },
+  onImportUrl: (String, String) -> Unit = { _, _ -> },
+  onEpgConfirmation: (Boolean) -> Unit = {},
 ) {
   MainScreenContent(
     state = state,
@@ -91,7 +108,8 @@ private fun TestMainScreen(
     onGroupSelect = {},
     onFavoritesToggle = {},
     onImportUrl = onImportUrl,
-    onImportFile = { _, _, _ -> },
+    onImportFile = { _, _ -> },
+    onEpgConfirmation = onEpgConfirmation,
     onRefresh = {},
     onDeletePlaylist = {},
     onFavoriteToggle = {},

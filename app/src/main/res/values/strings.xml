@@ -24,7 +24,10 @@
     <string name="add_to_favorites">Добавить %1$s в избранное</string>
     <string name="remove_from_favorites">Удалить %1$s из избранного</string>
     <string name="skipped_channels">При импорте пропущено повреждённых записей: %1$d</string>
-    <string name="use_epg">Использовать EPG из плейлиста</string>
+    <string name="use_epg">Использовать EPG</string>
+    <string name="skip_epg">Без EPG</string>
+    <string name="epg_confirmation_title">В плейлисте найдена EPG</string>
+    <string name="epg_confirmation_message">Загрузить телепрограмму и использовать её для каналов?</string>
     <string name="epg_import_failed">Каналы импортированы, но EPG не загрузился. Приложение повторит загрузку при обновлении.</string>
     <string name="now_program">Сейчас: %1$s</string>
     <string name="next_program">Далее: %1$s</string>
