@@ -87,7 +87,7 @@ Local JVM tests cover M3U/EPG metadata parsing, XMLTV dates and gzip loading, ch
 ## Verification status and limitations
 
 - `./gradlew :app:testDebugUnitTest` passes: 20 tests, including conditional EPG confirmation state.
-- `./gradlew :app:connectedDebugAndroidTest` passes on `Pixel_10_Pro` emulator: 12 tests, including real local HLS playback, EPG confirmation choices, limited current/next SQL selection at a program-start boundary, confirmation suppression when EPG is absent, and opening a different channel after returning from the player.
+- `./gradlew :app:connectedDebugAndroidTest` passes on `Pixel_10_Pro` emulator: 13 tests, including real local HLS playback, EPG confirmation choices, limited current/next SQL selection at a program-start boundary, confirmation suppression when EPG is absent, opening a different channel after returning from the player, and preserving M3U channel order after import and refresh.
 - `./gradlew :app:lintDebug`, `assembleDebug`, and `assembleRelease` pass.
 - Manual emulator verification covered URL import, Storage Access Framework file import, search, favorites, process-restart persistence, actual video rendering, landscape configuration change, and background/resume. Additional EPG verification used local M3U and XMLTV.gz files: enabled import displayed current/next programs, while ignored import made no EPG request.
 - Release output is `app/build/outputs/apk/release/app-release.apk`; debug output is `app/build/outputs/apk/debug/app-debug.apk`.

@@ -166,6 +166,25 @@ class DefaultPlaylistRepositoryTest {
     assertTrue(!confirmationRequested)
   }
 
+  @Test
+  fun channels_preservePlaylistOrderAfterImportAndRefresh() = runBlocking {
+    server.enqueue(MockResponse().setBody(playlist("Zulu", "Alpha", "Mike")))
+    val imported = repository.importUrl("Test", server.url("/list.m3u").toString())
+
+    assertEquals(
+      listOf("Zulu", "Alpha", "Mike"),
+      repository.observeChannels(imported.playlistId).first().map { it.name },
+    )
+
+    server.enqueue(MockResponse().setBody(playlist("Bravo", "Zulu", "Alpha")))
+    repository.refresh(imported.playlistId)
+
+    assertEquals(
+      listOf("Bravo", "Zulu", "Alpha"),
+      repository.observeChannels(imported.playlistId).first().map { it.name },
+    )
+  }
+
   private fun playlist(vararg names: String): String = buildString {
     append("#EXTM3U\n")
     names.forEachIndexed { index, name ->

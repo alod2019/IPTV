@@ -11,7 +11,7 @@ interface PlaylistDao {
   @Query("SELECT * FROM playlists ORDER BY id")
   fun observePlaylists(): Flow<List<PlaylistEntity>>
 
-  @Query("SELECT * FROM channels WHERE playlistId = :playlistId ORDER BY groupName, name COLLATE NOCASE")
+  @Query("SELECT * FROM channels WHERE playlistId = :playlistId ORDER BY id")
   fun observeChannels(playlistId: Long): Flow<List<ChannelEntity>>
 
   @Query(
