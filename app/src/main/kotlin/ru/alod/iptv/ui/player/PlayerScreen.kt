@@ -1,5 +1,6 @@
 package ru.alod.iptv.ui.player
 
+import android.view.View
 import androidx.activity.compose.LocalActivity
 import androidx.media3.common.util.UnstableApi
 import androidx.compose.foundation.background
@@ -10,21 +11,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,7 +63,7 @@ fun PlayerScreen(
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val lifecycleOwner = LocalLifecycleOwner.current
   val activity = LocalActivity.current
-  var isFullscreen by rememberSaveable { mutableStateOf(false) }
+  var areControlsVisible by remember { mutableStateOf(false) }
   var resizeMode by rememberSaveable { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
 
   DisposableEffect(lifecycleOwner, viewModel) {
@@ -80,22 +81,47 @@ fun PlayerScreen(
     }
   }
 
-  DisposableEffect(activity, isFullscreen) {
+  DisposableEffect(activity) {
     val window = activity?.window
     val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-    if (isFullscreen) {
-      controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-      controller?.hide(WindowInsetsCompat.Type.systemBars())
-    } else {
-      controller?.show(WindowInsetsCompat.Type.systemBars())
-    }
+    controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
   }
 
-  Scaffold(
-    modifier = modifier.background(Color.Black),
-    topBar = {
+  LaunchedEffect(activity, areControlsVisible) {
+    val window = activity?.window
+    val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+    if (areControlsVisible) {
+      controller?.show(WindowInsetsCompat.Type.systemBars())
+    } else {
+      controller?.hide(WindowInsetsCompat.Type.systemBars())
+    }
+  }
+
+  Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+    AndroidView(
+      modifier = Modifier.fillMaxSize(),
+      factory = { context ->
+        PlayerView(context).apply {
+          keepScreenOn = true
+          useController = true
+          controllerAutoShow = false
+          setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+          setControllerVisibilityListener(
+            PlayerView.ControllerVisibilityListener { visibility ->
+              areControlsVisible = visibility == View.VISIBLE
+            },
+          )
+        }
+      },
+      update = { view ->
+        view.player = state.player
+        view.resizeMode = resizeMode
+      },
+    )
+    if (areControlsVisible) {
       CenterAlignedTopAppBar(
+        modifier = Modifier.align(Alignment.TopCenter),
         title = { Text(state.channel?.name ?: stringResource(R.string.app_name)) },
         navigationIcon = {
           IconButton(onClick = onBack) {
@@ -112,43 +138,23 @@ fun PlayerScreen(
           }) {
             Icon(Icons.Default.AspectRatio, contentDescription = stringResource(R.string.aspect_ratio))
           }
-          IconButton(onClick = { isFullscreen = !isFullscreen }) {
-            Icon(
-              if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-              contentDescription = stringResource(if (isFullscreen) R.string.exit_fullscreen else R.string.fullscreen),
-            )
-          }
         },
+        colors = TopAppBarDefaults.topAppBarColors(
+          containerColor = Color.Black.copy(alpha = 0.65f),
+        ),
       )
-    },
-  ) { padding ->
-    Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color.Black)) {
-      AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = { context ->
-          PlayerView(context).apply {
-            keepScreenOn = true
-            useController = true
-            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-          }
-        },
-        update = { view ->
-          view.player = state.player
-          view.resizeMode = resizeMode
-        },
-      )
-      if (state.isLoading || state.isBuffering) {
-        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-      }
-      state.error?.let { error ->
-        Column(
-          modifier = Modifier.align(Alignment.Center).padding(32.dp),
-          horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-          Text(playerErrorText(error), color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
-          if (error != PlayerError.NOT_FOUND) {
-            Button(onClick = viewModel::retry) { Text(stringResource(R.string.retry)) }
-          }
+    }
+    if (state.isLoading || state.isBuffering) {
+      CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+    }
+    state.error?.let { error ->
+      Column(
+        modifier = Modifier.align(Alignment.Center).padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        Text(playerErrorText(error), color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
+        if (error != PlayerError.NOT_FOUND) {
+          Button(onClick = viewModel::retry) { Text(stringResource(R.string.retry)) }
         }
       }
     }

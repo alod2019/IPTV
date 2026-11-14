@@ -34,7 +34,7 @@ Production code is under `app/src/main/kotlin/ru/alod/iptv/`:
 - `data/local/` contains Room entities, DAO, and database. Only the current schema (version 1, including EPG settings and `programs`) is exported to `app/schemas/`. No migrations or destructive fallback are configured for the first publication.
 - `data/DefaultPlaylistRepository.kt` imports and transactionally refreshes playlists. Initial imports request EPG confirmation only when the parsed source declares EPG, without loading the playlist twice. Failed refreshes retain cached channels; favorites and last channel are restored by stable keys. EPG failures do not cancel channel import or delete cached programs. Programs map to channels by `tvg-id`; SQL selects only the current and next program for each channel, and these values refresh every minute without loading the full guide.
 - `ui/main/` contains the playlist/channel screen and its ViewModel. The UI supports multiple saved playlists, groups, search, favorites, import with an EPG confirmation dialog when EPG is present, refresh, deletion, and current/next program labels.
-- `ui/player/` owns ExoPlayer lifecycle and playback UI. The ViewModel retains the player across configuration changes, pauses on stop, and releases it when cleared.
+- `ui/player/` owns ExoPlayer lifecycle and playback UI. The ViewModel retains the player across configuration changes, pauses on stop, and releases it when cleared. The player opens in immersive fullscreen; the application bar and system bars follow Media3 controller visibility on taps and automatic hiding.
 - `Navigation.kt` registers both routes; `NavigationKeys.kt` defines their serializable keys.
 - `ui/theme/` contains the Material 3 theme. Dynamic color remains available but disabled by default.
 
@@ -87,7 +87,7 @@ Local JVM tests cover M3U/EPG metadata parsing, XMLTV dates and gzip loading, ch
 ## Verification status and limitations
 
 - `./gradlew :app:testDebugUnitTest` passes: 20 tests, including conditional EPG confirmation state.
-- `./gradlew :app:connectedDebugAndroidTest` passes on `Pixel_10_Pro` emulator: 13 tests, including real local HLS playback, EPG confirmation choices, limited current/next SQL selection at a program-start boundary, confirmation suppression when EPG is absent, opening a different channel after returning from the player, and preserving M3U channel order after import and refresh.
+- `./gradlew :app:connectedDebugAndroidTest` passes on `Pixel_10_Pro` emulator: 14 tests, including real local HLS playback, synchronized player controls and system bars with automatic hiding, EPG confirmation choices, limited current/next SQL selection at a program-start boundary, confirmation suppression when EPG is absent, opening a different channel after returning from the player, and preserving M3U channel order after import and refresh.
 - `./gradlew :app:lintDebug`, `assembleDebug`, and `assembleRelease` pass.
 - Manual emulator verification covered URL import, Storage Access Framework file import, search, favorites, process-restart persistence, actual video rendering, landscape configuration change, and background/resume. Additional EPG verification used local M3U and XMLTV.gz files: enabled import displayed current/next programs, while ignored import made no EPG request.
 - Release output is `app/build/outputs/apk/release/app-release.apk`; debug output is `app/build/outputs/apk/debug/app-debug.apk`.

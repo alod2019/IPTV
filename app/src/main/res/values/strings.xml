@@ -45,6 +45,4 @@
     <string name="player_error_generic">Ошибка воспроизведения. Попробуйте ещё раз.</string>
     <string name="back">Назад</string>
     <string name="aspect_ratio">Изменить соотношение сторон</string>
-    <string name="fullscreen">Полноэкранный режим</string>
-    <string name="exit_fullscreen">Выйти из полноэкранного режима</string>
 </resources>
