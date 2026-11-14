@@ -2,11 +2,19 @@ package ru.alod.iptv.data
 
 import androidx.room.withTransaction
 import java.io.StringReader
+import java.net.URI
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import ru.alod.iptv.data.epg.EpgLoader
+import ru.alod.iptv.data.epg.ParsedEpgProgram
 import ru.alod.iptv.data.local.ChannelEntity
 import ru.alod.iptv.data.local.IptvDatabase
 import ru.alod.iptv.data.local.PlaylistEntity
+import ru.alod.iptv.data.local.ProgramEntity
 import ru.alod.iptv.data.m3u.M3uParser
 import ru.alod.iptv.data.m3u.ParsedPlaylist
 import ru.alod.iptv.data.source.PlaylistSourceLoader
@@ -16,6 +24,7 @@ import ru.alod.iptv.domain.model.ImportResult
 import ru.alod.iptv.domain.model.Playlist
 import ru.alod.iptv.domain.model.PlaylistImportException
 import ru.alod.iptv.domain.model.PlaylistSource
+import ru.alod.iptv.domain.model.Program
 import ru.alod.iptv.domain.repository.PlaylistRepository
 
 class DefaultPlaylistRepository(
@@ -23,23 +32,37 @@ class DefaultPlaylistRepository(
   private val sourceLoader: PlaylistSourceLoader,
   private val parser: M3uParser,
   private val clock: () -> Long = System::currentTimeMillis,
+  private val epgLoader: EpgLoader? = null,
 ) : PlaylistRepository {
   private val dao = database.playlistDao()
 
   override fun observePlaylists(): Flow<List<Playlist>> =
     dao.observePlaylists().map { playlists -> playlists.map(::toPlaylist) }
 
-  override fun observeChannels(playlistId: Long): Flow<List<Channel>> =
-    dao.observeChannels(playlistId).map { channels -> channels.map(::toChannel) }
-
-  override suspend fun importUrl(name: String, url: String): ImportResult {
-    val parsed = parser.parse(StringReader(sourceLoader.loadUrl(url)))
-    return createPlaylist(name, PlaylistSource.URL, url.trim(), parsed)
+  override fun observeChannels(playlistId: Long): Flow<List<Channel>> = combine(
+    dao.observeChannels(playlistId),
+    clockTicks(),
+  ) { channels, now ->
+    val programsByChannel = dao.currentAndNextPrograms(playlistId, now)
+      .groupBy(ProgramEntity::channelTvgId)
+    channels.map { channel ->
+      val channelPrograms = channel.tvgId?.let(programsByChannel::get).orEmpty()
+      val current = channelPrograms.firstOrNull { it.startMillis <= now && it.endMillis > now }
+      val next = channelPrograms.firstOrNull { it.startMillis > now }
+      toChannel(channel, current, next)
+    }
   }
 
-  override suspend fun importFile(name: String, uri: String): ImportResult {
+  override suspend fun importUrl(name: String, url: String, useEpg: Boolean): ImportResult {
+    val parsed = parser.parse(StringReader(sourceLoader.loadUrl(url)))
+    val epg = loadEpg(url, parsed.epgUrl, useEpg)
+    return createPlaylist(name, PlaylistSource.URL, url.trim(), parsed, epg)
+  }
+
+  override suspend fun importFile(name: String, uri: String, useEpg: Boolean): ImportResult {
     val parsed = parser.parse(StringReader(sourceLoader.loadFile(uri)))
-    return createPlaylist(name, PlaylistSource.FILE, uri, parsed)
+    val epg = loadEpg(uri, parsed.epgUrl, useEpg)
+    return createPlaylist(name, PlaylistSource.FILE, uri, parsed, epg)
   }
 
   override suspend fun refresh(playlistId: Long): ImportResult {
@@ -50,7 +73,8 @@ class DefaultPlaylistRepository(
       else -> throw PlaylistImportException(ImportError.INVALID_FORMAT)
     }
     val parsed = parser.parse(StringReader(text))
-    return replaceChannels(playlist, parsed)
+    val epg = loadEpg(playlist.location, parsed.epgUrl ?: playlist.epgUrl, playlist.epgEnabled)
+    return replaceChannels(playlist, parsed, epg)
   }
 
   override suspend fun deletePlaylist(playlistId: Long) = dao.deletePlaylist(playlistId)
@@ -61,13 +85,41 @@ class DefaultPlaylistRepository(
   override suspend fun setLastChannel(playlistId: Long, channelId: Long) =
     dao.setLastChannel(playlistId, channelId)
 
-  override suspend fun getChannel(channelId: Long): Channel? = dao.channel(channelId)?.let(::toChannel)
+  override suspend fun getChannel(channelId: Long): Channel? = dao.channel(channelId)?.let { toChannel(it) }
+
+  private suspend fun loadEpg(playlistLocation: String, rawUrl: String?, enabled: Boolean): EpgLoadResult {
+    val url = if (enabled) resolveEpgUrl(playlistLocation, rawUrl) else null
+    if (url == null) return EpgLoadResult()
+    if (epgLoader == null) return EpgLoadResult(url = url)
+    return try {
+      EpgLoadResult(url = url, programs = epgLoader.load(url))
+    } catch (exception: CancellationException) {
+      throw exception
+    } catch (_: Exception) {
+      EpgLoadResult(url = url, failed = true)
+    }
+  }
+
+  private fun resolveEpgUrl(playlistLocation: String, rawUrl: String?): String? {
+    val value = rawUrl?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    return runCatching {
+      val uri = URI(value)
+      if (uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) {
+        value
+      } else {
+        URI(playlistLocation).resolve(uri).toString().takeIf {
+          it.startsWith("http://") || it.startsWith("https://")
+        }
+      }
+    }.getOrNull()
+  }
 
   private suspend fun createPlaylist(
     name: String,
     source: PlaylistSource,
     location: String,
     parsed: ParsedPlaylist,
+    epg: EpgLoadResult,
   ): ImportResult {
     requireNotEmpty(parsed)
     return database.withTransaction {
@@ -78,14 +130,24 @@ class DefaultPlaylistRepository(
         updatedAt = clock(),
         skippedChannels = parsed.skippedChannels,
         lastChannelId = null,
+        epgUrl = epg.url,
+        epgEnabled = epg.url != null,
+        epgUpdatedAt = if (epg.failed || epg.url == null) null else clock(),
       )
       val playlistId = dao.insertPlaylist(playlist)
       val ids = dao.insertChannels(parsed.toEntities(playlistId))
-      ImportResult(playlistId, ids.size, parsed.skippedChannels)
+      if (epg.url != null && !epg.failed) {
+        dao.insertPrograms(epg.programs.toEntities(playlistId))
+      }
+      ImportResult(playlistId, ids.size, parsed.skippedChannels, epg.failed)
     }
   }
 
-  private suspend fun replaceChannels(playlist: PlaylistEntity, parsed: ParsedPlaylist): ImportResult {
+  private suspend fun replaceChannels(
+    playlist: PlaylistEntity,
+    parsed: ParsedPlaylist,
+    epg: EpgLoadResult,
+  ): ImportResult {
     requireNotEmpty(parsed)
     return database.withTransaction {
       val previous = dao.channels(playlist.id)
@@ -95,19 +157,48 @@ class DefaultPlaylistRepository(
       val entities = parsed.toEntities(playlist.id, favorites)
       val ids = dao.insertChannels(entities)
       val lastChannelId = entities.indices.firstOrNull { entities[it].stableKey == lastStableKey }?.let(ids::get)
+      if (epg.url != null && !epg.failed) {
+        dao.deletePrograms(playlist.id)
+        dao.insertPrograms(epg.programs.toEntities(playlist.id))
+      }
       dao.updateAfterImport(
         playlistId = playlist.id,
         name = playlist.name,
         updatedAt = clock(),
         skippedChannels = parsed.skippedChannels,
         lastChannelId = lastChannelId,
+        epgUrl = epg.url,
+        epgEnabled = epg.url != null,
+        epgUpdatedAt = when {
+          epg.url == null -> null
+          epg.failed -> playlist.epgUpdatedAt
+          else -> clock()
+        },
       )
-      ImportResult(playlist.id, ids.size, parsed.skippedChannels)
+      ImportResult(playlist.id, ids.size, parsed.skippedChannels, epg.failed)
     }
   }
 
   private fun requireNotEmpty(parsed: ParsedPlaylist) {
     if (parsed.channels.isEmpty()) throw PlaylistImportException(ImportError.EMPTY)
+  }
+
+  private fun clockTicks(): Flow<Long> = flow {
+    while (true) {
+      emit(clock())
+      delay(60_000)
+    }
+  }
+
+  private fun List<ParsedEpgProgram>.toEntities(playlistId: Long): List<ProgramEntity> = map { program ->
+    ProgramEntity(
+      playlistId = playlistId,
+      channelTvgId = program.channelId,
+      title = program.title,
+      description = program.description,
+      startMillis = program.startMillis,
+      endMillis = program.endMillis,
+    )
   }
 
   private fun ParsedPlaylist.toEntities(
@@ -141,9 +232,15 @@ class DefaultPlaylistRepository(
     updatedAt = entity.updatedAt,
     skippedChannels = entity.skippedChannels,
     lastChannelId = entity.lastChannelId,
+    epgUrl = entity.epgUrl,
+    epgEnabled = entity.epgEnabled,
   )
 
-  private fun toChannel(entity: ChannelEntity) = Channel(
+  private fun toChannel(
+    entity: ChannelEntity,
+    current: ProgramEntity? = null,
+    next: ProgramEntity? = null,
+  ) = Channel(
     id = entity.id,
     playlistId = entity.playlistId,
     stableKey = entity.stableKey,
@@ -153,6 +250,21 @@ class DefaultPlaylistRepository(
     groupName = entity.groupName,
     tvgId = entity.tvgId,
     isFavorite = entity.isFavorite,
+    currentProgram = current?.toProgram(),
+    nextProgram = next?.toProgram(),
+  )
+
+  private fun ProgramEntity.toProgram() = Program(
+    title = title,
+    description = description,
+    startMillis = startMillis,
+    endMillis = endMillis,
+  )
+
+  private data class EpgLoadResult(
+    val url: String? = null,
+    val programs: List<ParsedEpgProgram> = emptyList(),
+    val failed: Boolean = false,
   )
 
   private companion object {

@@ -69,7 +69,7 @@ class MainScreenViewModelTest {
     val repository = FakePlaylistRepository()
     val viewModel = MainScreenViewModel(repository)
 
-    viewModel.importUrl("Test", "https://example.com/list.m3u")
+    viewModel.importUrl("Test", "https://example.com/list.m3u", useEpg = true)
 
     val state = content(viewModel)
     assertEquals(1L, state.selectedPlaylistId)
@@ -124,9 +124,9 @@ private class FakePlaylistRepository(
 
   override fun observeChannels(playlistId: Long): Flow<List<Channel>> = channelsFlow
 
-  override suspend fun importUrl(name: String, url: String): ImportResult = importResult()
+  override suspend fun importUrl(name: String, url: String, useEpg: Boolean): ImportResult = importResult()
 
-  override suspend fun importFile(name: String, uri: String): ImportResult = importResult()
+  override suspend fun importFile(name: String, uri: String, useEpg: Boolean): ImportResult = importResult()
 
   override suspend fun refresh(playlistId: Long): ImportResult = importResult()
 

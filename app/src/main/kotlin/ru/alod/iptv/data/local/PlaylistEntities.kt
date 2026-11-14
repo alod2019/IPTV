@@ -14,6 +14,9 @@ data class PlaylistEntity(
   val updatedAt: Long?,
   val skippedChannels: Int,
   val lastChannelId: Long?,
+  val epgUrl: String? = null,
+  val epgEnabled: Boolean = false,
+  val epgUpdatedAt: Long? = null,
 )
 
 @Entity(
@@ -43,4 +46,26 @@ data class ChannelEntity(
   val groupName: String?,
   val tvgId: String?,
   val isFavorite: Boolean,
+)
+
+@Entity(
+  tableName = "programs",
+  primaryKeys = ["playlistId", "channelTvgId", "startMillis"],
+  foreignKeys = [
+    ForeignKey(
+      entity = PlaylistEntity::class,
+      parentColumns = ["id"],
+      childColumns = ["playlistId"],
+      onDelete = ForeignKey.CASCADE,
+    ),
+  ],
+  indices = [Index("playlistId"), Index(value = ["playlistId", "channelTvgId", "startMillis"])],
+)
+data class ProgramEntity(
+  val playlistId: Long,
+  val channelTvgId: String,
+  val title: String,
+  val description: String?,
+  val startMillis: Long,
+  val endMillis: Long,
 )

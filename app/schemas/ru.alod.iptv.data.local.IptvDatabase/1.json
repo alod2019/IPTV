@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "62f088e139f8d00d4b34078e42bef23b",
+    "identityHash": "c6cd9c00fc0204c8ca4d0a80d4f819f3",
     "entities": [
       {
         "tableName": "playlists",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `sourceType` TEXT NOT NULL, `location` TEXT NOT NULL, `updatedAt` INTEGER, `skippedChannels` INTEGER NOT NULL, `lastChannelId` INTEGER)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `sourceType` TEXT NOT NULL, `location` TEXT NOT NULL, `updatedAt` INTEGER, `skippedChannels` INTEGER NOT NULL, `lastChannelId` INTEGER, `epgUrl` TEXT, `epgEnabled` INTEGER NOT NULL, `epgUpdatedAt` INTEGER)",
         "fields": [
           {
             "fieldPath": "id",
@@ -46,6 +46,22 @@
           {
             "fieldPath": "lastChannelId",
             "columnName": "lastChannelId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "epgUrl",
+            "columnName": "epgUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "epgEnabled",
+            "columnName": "epgEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "epgUpdatedAt",
+            "columnName": "epgUpdatedAt",
             "affinity": "INTEGER"
           }
         ],
@@ -170,11 +186,95 @@
             ]
           }
         ]
+      },
+      {
+        "tableName": "programs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`playlistId` INTEGER NOT NULL, `channelTvgId` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT, `startMillis` INTEGER NOT NULL, `endMillis` INTEGER NOT NULL, PRIMARY KEY(`playlistId`, `channelTvgId`, `startMillis`), FOREIGN KEY(`playlistId`) REFERENCES `playlists`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "playlistId",
+            "columnName": "playlistId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "channelTvgId",
+            "columnName": "channelTvgId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "startMillis",
+            "columnName": "startMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endMillis",
+            "columnName": "endMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "playlistId",
+            "channelTvgId",
+            "startMillis"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_programs_playlistId",
+            "unique": false,
+            "columnNames": [
+              "playlistId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_programs_playlistId` ON `${TABLE_NAME}` (`playlistId`)"
+          },
+          {
+            "name": "index_programs_playlistId_channelTvgId_startMillis",
+            "unique": false,
+            "columnNames": [
+              "playlistId",
+              "channelTvgId",
+              "startMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_programs_playlistId_channelTvgId_startMillis` ON `${TABLE_NAME}` (`playlistId`, `channelTvgId`, `startMillis`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "playlists",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "playlistId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '62f088e139f8d00d4b34078e42bef23b')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c6cd9c00fc0204c8ca4d0a80d4f819f3')"
     ]
   }
 }

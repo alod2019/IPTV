@@ -74,6 +74,85 @@ class DefaultPlaylistRepositoryTest {
     assertEquals(refreshed, repository.observeChannels(imported.playlistId).first())
   }
 
+  @Test
+  fun epgImport_loadsAndMapsCurrentAndNextPrograms() = runBlocking {
+    val m3u = "#EXTM3U url-tvg=\"${server.url("/guide.xml")}\"\n" +
+      "#EXTINF:-1 tvg-id=\"News\",News\nhttps://streams.test/news.m3u8\n"
+    val xml = """
+      <tv>
+        <programme start="19700101000000 +0000" stop="19700101000200 +0000" channel="News"><title>Morning</title></programme>
+        <programme start="19700101000200 +0000" stop="19700101000400 +0000" channel="News"><title>Next</title></programme>
+      </tv>
+    """.trimIndent()
+    server.enqueue(MockResponse().setBody(m3u))
+    server.enqueue(MockResponse().setBody(xml))
+    val epgRepository = DefaultPlaylistRepository(
+      database,
+      PlaylistSourceLoader(OkHttpClient(), ApplicationProvider.getApplicationContext<android.content.Context>().contentResolver),
+      M3uParser(),
+      clock = { 60_000L },
+      epgLoader = ru.alod.iptv.data.epg.EpgLoader(OkHttpClient(), ru.alod.iptv.data.epg.XmlTvParser()),
+    )
+
+    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), useEpg = true)
+    val channel = epgRepository.observeChannels(result.playlistId).first().single()
+
+    assertEquals("Morning", channel.currentProgram?.title)
+    assertEquals("Next", channel.nextProgram?.title)
+    assertTrue(epgRepository.observePlaylists().first().single().epgEnabled)
+  }
+
+  @Test
+  fun epgImport_atProgramStart_queriesOnlyCurrentAndNext() = runBlocking {
+    val m3u = "#EXTM3U url-tvg=\"${server.url("/guide.xml")}\"\n" +
+      "#EXTINF:-1 tvg-id=\"News\",News\nhttps://streams.test/news.m3u8\n"
+    val xml = """
+      <tv>
+        <programme start="19700101000000 +0000" stop="19700101000100 +0000" channel="News"><title>Past</title></programme>
+        <programme start="19700101000100 +0000" stop="19700101000200 +0000" channel="News"><title>Ended</title></programme>
+        <programme start="19700101000200 +0000" stop="19700101000400 +0000" channel="News"><title>Current</title></programme>
+        <programme start="19700101000400 +0000" stop="19700101000600 +0000" channel="News"><title>Next</title></programme>
+        <programme start="19700101000600 +0000" stop="19700101000800 +0000" channel="News"><title>Later</title></programme>
+      </tv>
+    """.trimIndent()
+    server.enqueue(MockResponse().setBody(m3u))
+    server.enqueue(MockResponse().setBody(xml))
+    val epgRepository = DefaultPlaylistRepository(
+      database,
+      PlaylistSourceLoader(OkHttpClient(), ApplicationProvider.getApplicationContext<android.content.Context>().contentResolver),
+      M3uParser(),
+      clock = { 120_000L },
+      epgLoader = ru.alod.iptv.data.epg.EpgLoader(OkHttpClient(), ru.alod.iptv.data.epg.XmlTvParser()),
+    )
+
+    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), useEpg = true)
+    val channel = epgRepository.observeChannels(result.playlistId).first().single()
+    val selectedPrograms = database.playlistDao().currentAndNextPrograms(result.playlistId, 120_000L)
+
+    assertEquals("Current", channel.currentProgram?.title)
+    assertEquals("Next", channel.nextProgram?.title)
+    assertEquals(listOf("Current", "Next"), selectedPrograms.map { it.title })
+  }
+
+  @Test
+  fun ignoredEpg_doesNotRequestGuide() = runBlocking {
+    val m3u = "#EXTM3U url-tvg=\"${server.url("/guide.xml")}\"\n" +
+      "#EXTINF:-1 tvg-id=\"News\",News\nhttps://streams.test/news.m3u8\n"
+    server.enqueue(MockResponse().setBody(m3u))
+    val epgRepository = DefaultPlaylistRepository(
+      database,
+      PlaylistSourceLoader(OkHttpClient(), ApplicationProvider.getApplicationContext<android.content.Context>().contentResolver),
+      M3uParser(),
+      epgLoader = ru.alod.iptv.data.epg.EpgLoader(OkHttpClient(), ru.alod.iptv.data.epg.XmlTvParser()),
+    )
+
+    val result = epgRepository.importUrl("Test", server.url("/list.m3u").toString(), useEpg = false)
+
+    assertEquals(1, server.requestCount)
+    assertTrue(!epgRepository.observePlaylists().first().single().epgEnabled)
+    assertEquals(null, epgRepository.observeChannels(result.playlistId).first().single().currentProgram)
+  }
+
   private fun playlist(vararg names: String): String = buildString {
     append("#EXTM3U\n")
     names.forEachIndexed { index, name ->

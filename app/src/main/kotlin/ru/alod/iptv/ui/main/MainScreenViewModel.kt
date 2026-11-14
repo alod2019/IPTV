@@ -48,12 +48,12 @@ class MainScreenViewModel(
     _uiState.value = content().let { it.copy(favoritesOnly = !it.favoritesOnly) }
   }
 
-  fun importUrl(name: String, url: String) = runImport {
-    repository.importUrl(name, url)
+  fun importUrl(name: String, url: String, useEpg: Boolean) = runImport {
+    repository.importUrl(name, url, useEpg)
   }
 
-  fun importFile(name: String, uri: String) = runImport {
-    repository.importFile(name, uri)
+  fun importFile(name: String, uri: String, useEpg: Boolean) = runImport {
+    repository.importFile(name, uri, useEpg)
   }
 
   fun refresh() {
@@ -85,7 +85,7 @@ class MainScreenViewModel(
   }
 
   fun dismissImportMessage() {
-    _uiState.value = content().copy(skippedChannels = null)
+    _uiState.value = content().copy(skippedChannels = null, epgError = false)
   }
 
   private fun observePlaylists() {
@@ -116,6 +116,7 @@ class MainScreenViewModel(
             isRefreshing = false,
             selectedPlaylistId = result.playlistId,
             skippedChannels = result.skippedChannels.takeIf { it > 0 },
+            epgError = result.epgError,
           )
           observeChannels(result.playlistId)
         }
@@ -163,6 +164,7 @@ sealed interface MainScreenUiState {
     val isRefreshing: Boolean = false,
     val operationError: ImportError? = null,
     val skippedChannels: Int? = null,
+    val epgError: Boolean = false,
     internal val channelsJobNeeded: Boolean = true,
   ) : MainScreenUiState {
     val selectedPlaylist: Playlist? get() = playlists.firstOrNull { it.id == selectedPlaylistId }

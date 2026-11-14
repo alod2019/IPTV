@@ -26,6 +26,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -107,8 +108,8 @@ internal fun MainScreenContent(
   onQueryChange: (String) -> Unit,
   onGroupSelect: (String?) -> Unit,
   onFavoritesToggle: () -> Unit,
-  onImportUrl: (String, String) -> Unit,
-  onImportFile: (String, String) -> Unit,
+  onImportUrl: (String, String, Boolean) -> Unit,
+  onImportFile: (String, String, Boolean) -> Unit,
   onRefresh: () -> Unit,
   onDeletePlaylist: () -> Unit,
   onFavoriteToggle: (Channel) -> Unit,
@@ -120,13 +121,14 @@ internal fun MainScreenContent(
   var showAddDialog by rememberSaveable { mutableStateOf(false) }
   var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
   var pendingPlaylistName by rememberSaveable { mutableStateOf("") }
+  var pendingUseEpg by rememberSaveable { mutableStateOf(true) }
   val context = LocalContext.current
   val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
     if (uri != null) {
       runCatching {
         context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
       }
-      onImportFile(pendingPlaylistName, uri.toString())
+      onImportFile(pendingPlaylistName, uri.toString(), pendingUseEpg)
     }
   }
 
@@ -208,13 +210,15 @@ internal fun MainScreenContent(
           }
         }
       }
-      state.skippedChannels?.let { skipped ->
+      if (state.skippedChannels != null || state.epgError) {
         Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-              text = stringResource(R.string.skipped_channels, skipped),
-              modifier = Modifier.weight(1f).padding(16.dp),
-            )
+            Column(modifier = Modifier.weight(1f).padding(16.dp)) {
+              state.skippedChannels?.let { skipped ->
+                Text(stringResource(R.string.skipped_channels, skipped))
+              }
+              if (state.epgError) Text(stringResource(R.string.epg_import_failed))
+            }
             IconButton(onClick = onDismissImportMessage) {
               Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close))
             }
@@ -251,12 +255,13 @@ internal fun MainScreenContent(
     AddPlaylistDialog(
       isLoading = state.isRefreshing,
       onDismiss = { showAddDialog = false },
-      onImportUrl = { name, url ->
-        onImportUrl(name, url)
+      onImportUrl = { name, url, useEpg ->
+        onImportUrl(name, url, useEpg)
         showAddDialog = false
       },
-      onChooseFile = { name ->
+      onChooseFile = { name, useEpg ->
         pendingPlaylistName = name
+        pendingUseEpg = useEpg
         fileLauncher.launch(arrayOf("*/*"))
         showAddDialog = false
       },
@@ -295,7 +300,17 @@ private fun ChannelRow(channel: Channel, onClick: () -> Unit, onFavoriteToggle: 
   ListItem(
     modifier = Modifier.clickable(onClick = onClick),
     headlineContent = { Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-    supportingContent = channel.groupName?.let { group -> { Text(group) } },
+    supportingContent = {
+      Column {
+        channel.groupName?.let { Text(it) }
+        channel.currentProgram?.let {
+          Text(stringResource(R.string.now_program, it.title), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        channel.nextProgram?.let {
+          Text(stringResource(R.string.next_program, it.title), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+      }
+    },
     leadingContent = {
       if (channel.logoUrl == null) {
         ChannelLogoPlaceholder(channel.name)
@@ -342,11 +357,12 @@ private fun ChannelLogoPlaceholder(name: String) {
 private fun AddPlaylistDialog(
   isLoading: Boolean,
   onDismiss: () -> Unit,
-  onImportUrl: (String, String) -> Unit,
-  onChooseFile: (String) -> Unit,
+  onImportUrl: (String, String, Boolean) -> Unit,
+  onChooseFile: (String, Boolean) -> Unit,
 ) {
   var name by rememberSaveable { mutableStateOf("") }
   var url by rememberSaveable { mutableStateOf("") }
+  var useEpg by rememberSaveable { mutableStateOf(true) }
   AlertDialog(
     onDismissRequest = onDismiss,
     title = { Text(stringResource(R.string.add_playlist)) },
@@ -364,13 +380,20 @@ private fun AddPlaylistDialog(
           singleLine = true,
           label = { Text(stringResource(R.string.playlist_url)) },
         )
-        TextButton(onClick = { onChooseFile(name) }, enabled = !isLoading) {
+        Row(
+          modifier = Modifier.clickable { useEpg = !useEpg },
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Checkbox(checked = useEpg, onCheckedChange = { useEpg = it })
+          Text(stringResource(R.string.use_epg))
+        }
+        TextButton(onClick = { onChooseFile(name, useEpg) }, enabled = !isLoading) {
           Text(stringResource(R.string.choose_file))
         }
       }
     },
     confirmButton = {
-      Button(onClick = { onImportUrl(name, url) }, enabled = url.isNotBlank() && !isLoading) {
+      Button(onClick = { onImportUrl(name, url, useEpg) }, enabled = url.isNotBlank() && !isLoading) {
         Text(stringResource(R.string.import_url))
       }
     },
@@ -435,8 +458,8 @@ private fun MainScreenPreview() {
       onQueryChange = {},
       onGroupSelect = {},
       onFavoritesToggle = {},
-      onImportUrl = { _, _ -> },
-      onImportFile = { _, _ -> },
+      onImportUrl = { _, _, _ -> },
+      onImportFile = { _, _, _ -> },
       onRefresh = {},
       onDeletePlaylist = {},
       onFavoriteToggle = {},

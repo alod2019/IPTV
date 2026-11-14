@@ -5,7 +5,11 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [PlaylistEntity::class, ChannelEntity::class], version = 1, exportSchema = true)
+@Database(
+  entities = [PlaylistEntity::class, ChannelEntity::class, ProgramEntity::class],
+  version = 1,
+  exportSchema = true,
+)
 abstract class IptvDatabase : RoomDatabase() {
   abstract fun playlistDao(): PlaylistDao
 

@@ -9,12 +9,18 @@ class M3uParser {
     var pending: PendingChannel? = null
     var skippedChannels = 0
     var firstLine = true
+    var epgUrl: String? = null
 
     reader.buffered().forEachLine { rawLine ->
       val line = if (firstLine) rawLine.removePrefix("\uFEFF").trim() else rawLine.trim()
       firstLine = false
       when {
         line.isEmpty() -> Unit
+        line.startsWith("#EXTM3U", ignoreCase = true) -> {
+          val attributes = parseAttributes(line.substringAfter(' ', ""))
+          epgUrl = listOf("url-tvg", "x-tvg-url", "tvg-url")
+            .firstNotNullOfOrNull { key -> attributes[key]?.toNullable() }
+        }
         line.startsWith("#EXTINF:", ignoreCase = true) -> {
           if (pending != null) skippedChannels++
           val metadata = line.substringAfter(':')
@@ -50,7 +56,7 @@ class M3uParser {
       }
     }
     if (pending != null) skippedChannels++
-    return ParsedPlaylist(channels = channels, skippedChannels = skippedChannels)
+    return ParsedPlaylist(channels = channels, skippedChannels = skippedChannels, epgUrl = epgUrl)
   }
 
   private fun parseAttributes(metadata: String): Map<String, String> {
@@ -115,6 +121,7 @@ class M3uParser {
 data class ParsedPlaylist(
   val channels: List<ParsedChannel>,
   val skippedChannels: Int,
+  val epgUrl: String? = null,
 )
 
 data class ParsedChannel(

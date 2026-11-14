@@ -4,6 +4,8 @@ import android.content.Context
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import ru.alod.iptv.data.DefaultPlaylistRepository
+import ru.alod.iptv.data.epg.EpgLoader
+import ru.alod.iptv.data.epg.XmlTvParser
 import ru.alod.iptv.data.local.IptvDatabase
 import ru.alod.iptv.data.m3u.M3uParser
 import ru.alod.iptv.data.source.PlaylistSourceLoader
@@ -21,5 +23,6 @@ class AppContainer(context: Context) {
     database = database,
     sourceLoader = PlaylistSourceLoader(httpClient, context.contentResolver),
     parser = M3uParser(),
+    epgLoader = EpgLoader(httpClient, XmlTvParser()),
   )
 }

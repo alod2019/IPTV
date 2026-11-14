@@ -30,6 +30,14 @@ class MainScreenTest {
   }
 
   @Test
+  fun programGuide_displaysCurrentAndNext() {
+    composeTestRule.setContent { TestMainScreen() }
+
+    composeTestRule.onNodeWithText("Сейчас: Morning").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Далее: Next").assertIsDisplayed()
+  }
+
+  @Test
   fun emptyState_opensAddPlaylistDialog() {
     composeTestRule.setContent { TestMainScreen(state = MainScreenUiState.Content()) }
 
@@ -40,21 +48,22 @@ class MainScreenTest {
   }
 
   @Test
-  fun urlDialog_passesEnteredNameAndUrl() {
-    var imported: Pair<String, String>? = null
+  fun urlDialog_passesEnteredDataAndEpgChoice() {
+    var imported: Triple<String, String, Boolean>? = null
     composeTestRule.setContent {
       TestMainScreen(
         state = MainScreenUiState.Content(),
-        onImportUrl = { name, url -> imported = name to url },
+        onImportUrl = { name, url, useEpg -> imported = Triple(name, url, useEpg) },
       )
     }
     composeTestRule.onNodeWithText("Добавить плейлист").performClick()
     composeTestRule.onNodeWithText("Название плейлиста").performTextInput("Test")
     composeTestRule.onNodeWithText("URL M3U/M3U8-плейлиста").performTextInput("https://example.com/list.m3u")
+    composeTestRule.onNodeWithText("Использовать EPG из плейлиста").performClick()
 
     composeTestRule.onNodeWithText("Добавить URL").performClick()
 
-    assertEquals("Test" to "https://example.com/list.m3u", imported)
+    assertEquals(Triple("Test", "https://example.com/list.m3u", false), imported)
   }
 }
 
@@ -64,12 +73,16 @@ private fun TestMainScreen(
     playlists = listOf(Playlist(1, "Test", PlaylistSource.URL, "", null, 0, null)),
     selectedPlaylistId = 1,
     channels = listOf(
-      Channel(1, 1, "one", "Sample1", "https://example.com/1.m3u8", null, "News", null, false),
+      Channel(
+        1, 1, "one", "Sample1", "https://example.com/1.m3u8", null, "News", null, false,
+        currentProgram = ru.alod.iptv.domain.model.Program("Morning", null, 0, 60_000),
+        nextProgram = ru.alod.iptv.domain.model.Program("Next", null, 60_000, 120_000),
+      ),
       Channel(2, 1, "two", "Sample2", "https://example.com/2.m3u8", null, "Movies", null, true),
     ),
   ),
   onChannelClick: (Channel) -> Unit = {},
-  onImportUrl: (String, String) -> Unit = { _, _ -> },
+  onImportUrl: (String, String, Boolean) -> Unit = { _, _, _ -> },
 ) {
   MainScreenContent(
     state = state,
@@ -78,7 +91,7 @@ private fun TestMainScreen(
     onGroupSelect = {},
     onFavoritesToggle = {},
     onImportUrl = onImportUrl,
-    onImportFile = { _, _ -> },
+    onImportFile = { _, _, _ -> },
     onRefresh = {},
     onDeletePlaylist = {},
     onFavoriteToggle = {},

@@ -13,6 +13,8 @@ data class Playlist(
   val updatedAt: Long?,
   val skippedChannels: Int,
   val lastChannelId: Long?,
+  val epgUrl: String? = null,
+  val epgEnabled: Boolean = false,
 )
 
 data class Channel(
@@ -25,10 +27,20 @@ data class Channel(
   val groupName: String?,
   val tvgId: String?,
   val isFavorite: Boolean,
+  val currentProgram: Program? = null,
+  val nextProgram: Program? = null,
+)
+
+data class Program(
+  val title: String,
+  val description: String?,
+  val startMillis: Long,
+  val endMillis: Long,
 )
 
 data class ImportResult(
   val playlistId: Long,
   val channelCount: Int,
   val skippedChannels: Int,
+  val epgError: Boolean = false,
 )
